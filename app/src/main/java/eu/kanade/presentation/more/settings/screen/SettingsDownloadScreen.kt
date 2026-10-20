@@ -246,7 +246,7 @@ object SettingsDownloadScreen : SearchableSettings {
         val pm = basePreferences.context.packageManager
         // ANK -->
         val ownPackage = basePreferences.context.packageName
-        val packageNamesMap = mapOf("" to stringResource(MR.strings.none)) +
+        val packageNamesMap = mapOf("" to stringResource(AMR.strings.pref_external_downloader_none)) +
             remember(ownPackage) { externalDownloaderPackages(pm, ownPackage) }
         // ANK <--
 
