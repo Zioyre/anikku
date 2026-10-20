@@ -273,18 +273,21 @@ object SettingsDownloadScreen : SearchableSettings {
 
     // ANK -->
     /**
-     * Installed 1DM/ADM packages, plus any other installed app that resolves a
-     * generic video URL. The package name is what [DownloadPreferences.externalDownloaderSelection] stores.
+     * Installed 1DM/ADM packages, plus any other installed app that can open a
+     * video URL or receive it as shared text. The package name is what
+     * [DownloadPreferences.externalDownloaderSelection] stores.
      */
     private fun externalDownloaderPackages(pm: PackageManager, ownPackage: String): Map<String, String> {
-        val probe = Intent(Intent.ACTION_VIEW).apply {
+        val viewProbe = Intent(Intent.ACTION_VIEW).apply {
             addCategory(Intent.CATEGORY_DEFAULT)
             setDataAndType(EXTERNAL_DOWNLOADER_PROBE_URL.toUri(), "video/*")
         }
-        val discovered = runCatching {
-            pm.queryIntentActivities(probe, PackageManager.MATCH_ALL)
-                .mapNotNull { it.activityInfo?.packageName }
-        }.getOrDefault(emptyList())
+        val sendProbe = Intent(Intent.ACTION_SEND).apply {
+            addCategory(Intent.CATEGORY_DEFAULT)
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, EXTERNAL_DOWNLOADER_PROBE_URL)
+        }
+        val discovered = queryDownloaderPackages(pm, viewProbe) + queryDownloaderPackages(pm, sendProbe)
 
         return (knownExternalDownloaders + discovered)
             .asSequence()
@@ -301,6 +304,13 @@ object SettingsDownloadScreen : SearchableSettings {
             }
             .sortedBy { it.second.lowercase() }
             .toMap()
+    }
+
+    private fun queryDownloaderPackages(pm: PackageManager, probe: Intent): List<String> {
+        return runCatching {
+            pm.queryIntentActivities(probe, PackageManager.MATCH_ALL)
+                .mapNotNull { it.activityInfo?.packageName }
+        }.getOrDefault(emptyList())
     }
     // ANK <--
 

@@ -241,6 +241,6 @@
     <string name="episodes_from_database">Episodes &amp; History from Database</string>
 
     <!-- ANK -->
-    <string name="pref_external_downloader_selection_info">Choose any installed app that can open a video link. 1DM and ADM keep their dedicated handoff.</string>
+    <string name="pref_external_downloader_selection_info">Choose any installed app that can open a video link or receive it as shared text. 1DM and ADM keep their dedicated handoff.</string>
     <!-- ANK -->
 </resources>
