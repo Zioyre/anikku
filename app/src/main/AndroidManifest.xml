@@ -52,6 +52,31 @@
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
+    <!-- ANK -->
+    <!-- Package visibility for the external-downloader picker on Android 11+. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="https" android:mimeType="video/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="http" android:mimeType="video/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <package android:name="idm.internet.download.manager" />
+        <package android:name="idm.internet.download.manager.plus" />
+        <package android:name="idm.internet.download.manager.adm.lite" />
+        <package android:name="com.dv.adm" />
+    </queries>
+    <!-- ANK -->
+
     <application
         android:name=".App"
         android:allowBackup="false"

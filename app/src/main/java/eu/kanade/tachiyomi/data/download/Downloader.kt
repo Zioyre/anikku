@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.data.download
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.core.net.toUri
 import com.arthenica.ffmpegkit.FFmpegKit
@@ -821,12 +822,12 @@ class Downloader(
             val pkgName = preferences.externalDownloaderSelection().get()
             val intent: Intent
             if (pkgName.isNotEmpty()) {
-                intent = pm.getLaunchIntentForPackage(pkgName) ?: throw Exception(
-                    "Launch intent not found",
-                )
                 when {
                     // 1DM
                     pkgName.startsWith("idm.internet.download.manager") -> {
+                        intent = pm.getLaunchIntentForPackage(pkgName) ?: throw Exception(
+                            "Launch intent not found",
+                        )
                         val headers = (video.headers ?: source.headers).toMap()
                         val bundle = Bundle()
                         for ((key, value) in headers) {
@@ -847,6 +848,9 @@ class Downloader(
                     }
                     // ADM
                     pkgName.startsWith("com.dv.adm") -> {
+                        intent = pm.getLaunchIntentForPackage(pkgName) ?: throw Exception(
+                            "Launch intent not found",
+                        )
                         val headers = (video.headers ?: source.headers).toList()
                         val bundle = Bundle()
                         headers.forEach { a ->
@@ -883,6 +887,11 @@ class Downloader(
                             }
                         }
                     }
+                    // ANK -->
+                    else -> {
+                        intent = genericExternalDownloaderIntent(pm, pkgName, video, source, filename)
+                    }
+                    // ANK <--
                 }
             } else {
                 intent = Intent(Intent.ACTION_VIEW).apply {
@@ -898,6 +907,70 @@ class Downloader(
             throw e
         }
     }
+
+    // ANK -->
+    /**
+     * Opens [pkgName] on the video URL. 1DM and ADM keep their own handoff.
+     * ACTION_VIEW is tried first; ACTION_SEND with the URL as text is the fallback.
+     */
+    private fun genericExternalDownloaderIntent(
+        pm: PackageManager,
+        pkgName: String,
+        video: Video,
+        source: HttpSource,
+        filename: String,
+    ): Intent {
+        val headers = video.headers ?: source.headers
+        val uri = video.videoUrl.toUri()
+        val referer = headers.values("Referer").firstOrNull()
+        val userAgent = headers.values("User-Agent").firstOrNull()
+
+        fun headerBundle() = Bundle().apply {
+            for ((key, value) in headers) {
+                putString(key, value)
+            }
+        }
+
+        fun Intent.putDownloadExtras() {
+            putExtra("extra_filename", "$filename.mkv")
+            if (!referer.isNullOrBlank()) {
+                putExtra("Referer", referer)
+            }
+            if (!userAgent.isNullOrBlank()) {
+                putExtra("User-Agent", userAgent)
+            }
+            if (headers.size > 0) {
+                putExtra("headers", headerBundle())
+                putExtra("android.media.intent.extra.HTTP_HEADERS", headerBundle())
+            }
+        }
+
+        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addCategory(Intent.CATEGORY_DEFAULT)
+            setPackage(pkgName)
+            setDataAndType(uri, "video/*")
+            putDownloadExtras()
+        }
+        if (viewIntent.resolveActivity(pm) != null) {
+            return viewIntent
+        }
+
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addCategory(Intent.CATEGORY_DEFAULT)
+            setPackage(pkgName)
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, video.videoUrl)
+            putDownloadExtras()
+        }
+        if (sendIntent.resolveActivity(pm) != null) {
+            return sendIntent
+        }
+
+        throw Exception("Launch intent not found")
+    }
+    // ANK <--
 
     /**
      * Checks if the download was successful.
