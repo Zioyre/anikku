@@ -1,5 +1,7 @@
 package eu.kanade.presentation.more.settings.screen
 
+import android.content.Intent
+import android.content.pm.PackageManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.collectAsState
@@ -9,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.util.fastMap
+import androidx.core.net.toUri
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.presentation.category.visualName
 import eu.kanade.presentation.more.settings.Preference
@@ -33,6 +36,17 @@ import uy.kohesive.injekt.api.get
 
 object SettingsDownloadScreen : SearchableSettings {
     private fun readResolve(): Any = SettingsDownloadScreen
+
+    // ANK -->
+    private const val EXTERNAL_DOWNLOADER_PROBE_URL = "https://example.com/video.mkv"
+
+    private val knownExternalDownloaders = listOf(
+        "idm.internet.download.manager",
+        "idm.internet.download.manager.plus",
+        "idm.internet.download.manager.adm.lite",
+        "com.dv.adm",
+    )
+    // ANK <--
 
     @ReadOnlyComposable
     @Composable
@@ -230,22 +244,11 @@ object SettingsDownloadScreen : SearchableSettings {
         val externalDownloaderPreference = downloadPreferences.externalDownloaderSelection()
 
         val pm = basePreferences.context.packageManager
-        val installedPackages = pm.getInstalledPackages(0)
-        val supportedDownloaders = installedPackages.filter {
-            when (it.packageName) {
-                "idm.internet.download.manager" -> true
-                "idm.internet.download.manager.plus" -> true
-                "idm.internet.download.manager.adm.lite" -> true
-                "com.dv.adm" -> true
-                else -> false
-            }
-        }
-        val packageNames = supportedDownloaders.map { it.packageName }
-        val packageNamesReadable = supportedDownloaders
-            .map { pm.getApplicationLabel(it.applicationInfo!!).toString() }
-
-        val packageNamesMap: Map<String, String> =
-            mapOf("" to "None") + packageNames.zip(packageNamesReadable).toMap()
+        // ANK -->
+        val ownPackage = basePreferences.context.packageName
+        val packageNamesMap = mapOf("" to stringResource(MR.strings.none)) +
+            remember(ownPackage) { externalDownloaderPackages(pm, ownPackage) }
+        // ANK <--
 
         return Preference.PreferenceGroup(
             title = stringResource(AYMR.strings.pref_category_external_downloader),
@@ -259,9 +262,47 @@ object SettingsDownloadScreen : SearchableSettings {
                     entries = packageNamesMap.toPersistentMap(),
                     title = stringResource(AYMR.strings.pref_external_downloader_selection),
                 ),
+                // ANK -->
+                Preference.PreferenceItem.InfoPreference(
+                    stringResource(AMR.strings.pref_external_downloader_selection_info),
+                ),
+                // ANK <--
             ),
         )
     }
+
+    // ANK -->
+    /**
+     * Installed 1DM/ADM packages, plus any other installed app that resolves a
+     * generic video URL. The package name is what [DownloadPreferences.externalDownloaderSelection] stores.
+     */
+    private fun externalDownloaderPackages(pm: PackageManager, ownPackage: String): Map<String, String> {
+        val probe = Intent(Intent.ACTION_VIEW).apply {
+            addCategory(Intent.CATEGORY_DEFAULT)
+            setDataAndType(EXTERNAL_DOWNLOADER_PROBE_URL.toUri(), "video/*")
+        }
+        val discovered = runCatching {
+            pm.queryIntentActivities(probe, PackageManager.MATCH_ALL)
+                .mapNotNull { it.activityInfo?.packageName }
+        }.getOrDefault(emptyList())
+
+        return (knownExternalDownloaders + discovered)
+            .asSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && it != ownPackage }
+            .distinct()
+            .mapNotNull { pkg ->
+                val label = try {
+                    pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+                } catch (_: PackageManager.NameNotFoundException) {
+                    null
+                } ?: return@mapNotNull null
+                pkg to label
+            }
+            .sortedBy { it.second.lowercase() }
+            .toMap()
+    }
+    // ANK <--
 
     // KMK -->
     @Composable
