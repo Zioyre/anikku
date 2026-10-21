@@ -822,9 +822,9 @@ class Downloader(
             val pkgName = preferences.externalDownloaderSelection().get()
             val intent: Intent
             if (pkgName.isNotEmpty()) {
-                when {
+                when (ExternalDownloaders.handoffFor(pkgName)) {
                     // 1DM
-                    pkgName.startsWith("idm.internet.download.manager") -> {
+                    ExternalDownloaders.Handoff.ONE_DM -> {
                         intent = pm.getLaunchIntentForPackage(pkgName) ?: throw Exception(
                             "Launch intent not found",
                         )
@@ -847,7 +847,7 @@ class Downloader(
                         }
                     }
                     // ADM
-                    pkgName.startsWith("com.dv.adm") -> {
+                    ExternalDownloaders.Handoff.ADM -> {
                         intent = pm.getLaunchIntentForPackage(pkgName) ?: throw Exception(
                             "Launch intent not found",
                         )
@@ -888,9 +888,10 @@ class Downloader(
                         }
                     }
                     // ANK -->
-                    else -> {
+                    ExternalDownloaders.Handoff.GENERIC -> {
                         intent = genericExternalDownloaderIntent(pm, pkgName, video, source, filename)
                     }
+                    null -> throw Exception("Unsupported external downloader: $pkgName")
                     // ANK <--
                 }
             } else {
@@ -954,6 +955,17 @@ class Downloader(
         }
         if (viewIntent.resolveActivity(pm) != null) {
             return viewIntent
+        }
+
+        val untypedViewIntent = Intent(Intent.ACTION_VIEW).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addCategory(Intent.CATEGORY_DEFAULT)
+            setPackage(pkgName)
+            data = uri
+            putDownloadExtras()
+        }
+        if (untypedViewIntent.resolveActivity(pm) != null) {
+            return untypedViewIntent
         }
 
         val sendIntent = Intent(Intent.ACTION_SEND).apply {

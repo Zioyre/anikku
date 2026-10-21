@@ -1,0 +1,95 @@
+name: Debug APK
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build debug APK
+    runs-on: 'ubuntu-24.04'
+
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+
+      - name: Set up JDK
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Set up gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
+
+      # Without the secret (fork PRs) Gradle signs with the runner's throwaway debug key.
+      - name: Prepare signing key
+        id: signing
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          ALIAS: ${{ secrets.ALIAS }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "args=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          keystore="$RUNNER_TEMP/signing.p12"
+          printf '%s' "$SIGNING_KEY" | base64 -d > "$keystore"
+          {
+            echo
+            echo "android.injected.signing.store.file=$keystore"
+            echo "android.injected.signing.store.password=$KEY_STORE_PASSWORD"
+            echo "android.injected.signing.key.alias=$ALIAS"
+            echo "android.injected.signing.key.password=$KEY_PASSWORD"
+          } >> gradle.properties
+
+      - name: Check code format
+        run: ./gradlew spotlessCheck
+
+      - name: Build app
+        run: ./gradlew assembleDebug
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Show signing certificate
+        run: |
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
+          "$apksigner" verify --print-certs app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+
+      - name: Rename APKs
+        run: |
+          set -e
+          suffix="r$(git rev-list --count HEAD)-$(git rev-parse --short HEAD)"
+          cd app/build/outputs/apk/debug
+          mv app-universal-debug.apk "Anikku-debug-universal-$suffix.apk"
+          mv app-arm64-v8a-debug.apk "Anikku-debug-arm64-v8a-$suffix.apk"
+          echo "APK_SUFFIX=$suffix" >> "$GITHUB_ENV"
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: Anikku-debug-${{ env.APK_SUFFIX }}
+          path: app/build/outputs/apk/debug/Anikku-debug-*.apk
+          retention-days: 14
