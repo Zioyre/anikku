@@ -1,7 +1,5 @@
 package eu.kanade.presentation.more.settings.screen
 
-import android.content.Intent
-import android.content.pm.PackageManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.collectAsState
@@ -11,11 +9,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.util.fastMap
-import androidx.core.net.toUri
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.presentation.category.visualName
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.widget.TriStateListDialog
+import eu.kanade.tachiyomi.data.download.ExternalDownloaders
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toImmutableMap
@@ -36,17 +34,6 @@ import uy.kohesive.injekt.api.get
 
 object SettingsDownloadScreen : SearchableSettings {
     private fun readResolve(): Any = SettingsDownloadScreen
-
-    // ANK -->
-    private const val EXTERNAL_DOWNLOADER_PROBE_URL = "https://example.com/video.mkv"
-
-    private val knownExternalDownloaders = listOf(
-        "idm.internet.download.manager",
-        "idm.internet.download.manager.plus",
-        "idm.internet.download.manager.adm.lite",
-        "com.dv.adm",
-    )
-    // ANK <--
 
     @ReadOnlyComposable
     @Composable
@@ -247,7 +234,7 @@ object SettingsDownloadScreen : SearchableSettings {
         // ANK -->
         val ownPackage = basePreferences.context.packageName
         val packageNamesMap = mapOf("" to stringResource(AMR.strings.pref_external_downloader_none)) +
-            remember(ownPackage) { externalDownloaderPackages(pm, ownPackage) }
+            remember(ownPackage) { ExternalDownloaders.installedLabels(pm, ownPackage) }
         // ANK <--
 
         return Preference.PreferenceGroup(
@@ -270,49 +257,6 @@ object SettingsDownloadScreen : SearchableSettings {
             ),
         )
     }
-
-    // ANK -->
-    /**
-     * Installed 1DM/ADM packages, plus any other installed app that can open a
-     * video URL or receive it as shared text. The package name is what
-     * [DownloadPreferences.externalDownloaderSelection] stores.
-     */
-    private fun externalDownloaderPackages(pm: PackageManager, ownPackage: String): Map<String, String> {
-        val viewProbe = Intent(Intent.ACTION_VIEW).apply {
-            addCategory(Intent.CATEGORY_DEFAULT)
-            setDataAndType(EXTERNAL_DOWNLOADER_PROBE_URL.toUri(), "video/*")
-        }
-        val sendProbe = Intent(Intent.ACTION_SEND).apply {
-            addCategory(Intent.CATEGORY_DEFAULT)
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, EXTERNAL_DOWNLOADER_PROBE_URL)
-        }
-        val discovered = queryDownloaderPackages(pm, viewProbe) + queryDownloaderPackages(pm, sendProbe)
-
-        return (knownExternalDownloaders + discovered)
-            .asSequence()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && it != ownPackage }
-            .distinct()
-            .mapNotNull { pkg ->
-                val label = try {
-                    pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
-                } catch (_: PackageManager.NameNotFoundException) {
-                    null
-                } ?: return@mapNotNull null
-                pkg to label
-            }
-            .sortedBy { it.second.lowercase() }
-            .toMap()
-    }
-
-    private fun queryDownloaderPackages(pm: PackageManager, probe: Intent): List<String> {
-        return runCatching {
-            pm.queryIntentActivities(probe, PackageManager.MATCH_ALL)
-                .mapNotNull { it.activityInfo?.packageName }
-        }.getOrDefault(emptyList())
-    }
-    // ANK <--
 
     // KMK -->
     @Composable
